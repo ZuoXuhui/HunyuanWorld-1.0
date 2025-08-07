@@ -168,10 +168,18 @@ huggingface-cli login --token $HUGGINGFACE_TOKEN
 ```python
 # 首先，使用输入图像生成全景图；
 python3 demo_panogen.py --prompt "" --image_path examples/case2/input.png --output_path test_results/case2
+# 为了节省显存，加速推理, 可以使用量化
+python3 demo_panogen.py --prompt "" --image_path examples/case2/input.png --output_path test_results/case2_quant --fp8_gemm --fp8_attention
+# 使用cache 加速推理
+python3 demo_panogen.py --prompt "" --image_path examples/case2/input.png --output_path test_results/case2_cache --cache
 # 其次，使用此全景图，通过HunyuanWorld 1.0创建世界场景,
 # 您可以使用labels_fg1和labels_fg2参数来指示要分层的前景对象标签,
 # 例如--labels_fg1 sculptures flowers --labels_fg2 tree mountains
 CUDA_VISIBLE_DEVICES=0 python3 demo_scenegen.py --image_path test_results/case2/panorama.png --labels_fg1 stones --labels_fg2 trees  --classes outdoor --output_path test_results/case2
+# 为了节省显存，加速推理, 可以使用量化
+CUDA_VISIBLE_DEVICES=0 python3 demo_scenegen.py --image_path test_results/case2_quant/panorama.png --labels_fg1 stones --labels_fg2 trees  --classes outdoor --output_path test_results/case2_quant --fp8_gemm --fp8_attention
+# 使用cache 加速推理
+CUDA_VISIBLE_DEVICES=0 python3 demo_scenegen.py --image_path test_results/case2_cache/panorama.png --labels_fg1 stones --labels_fg2 trees  --classes outdoor --output_path test_results/case2_cache --cache
 # And then you get your WORLD SCENE!!
 ```
 
@@ -179,10 +187,18 @@ CUDA_VISIBLE_DEVICES=0 python3 demo_scenegen.py --image_path test_results/case2/
 ```python
 # 首先，使用输入文本生成全景图；
 python3 demo_panogen.py --prompt "At the moment of glacier collapse, giant ice walls collapse and create waves, with no wildlife, captured in a disaster documentary" --output_path test_results/case7
+# 为了节省显存，加速推理, 可以使用量化
+python3 demo_panogen.py --prompt "At the moment of glacier collapse, giant ice walls collapse and create waves, with no wildlife, captured in a disaster documentary" --output_path test_results/case7_quant --fp8_gemm --fp8_attention
+# 使用cache 加速推理
+python3 demo_panogen.py --prompt "At the moment of glacier collapse, giant ice walls collapse and create waves, with no wildlife, captured in a disaster documentary" --output_path test_results/case7_cache --cache
 # 其次，使用此全景图，通过HunyuanWorld 1.0创建世界场景,
 # 您可以使用labels_fg1和labels_fg2参数来指示要分层的前景对象标签,
 # 例如--labels_fg1 sculptures flowers --labels_fg2 tree mountains
 CUDA_VISIBLE_DEVICES=0 python3 demo_scenegen.py --image_path test_results/case7/panorama.png --classes outdoor --output_path test_results/case7
+# 为了节省显存，加速推理, 可以使用量化
+CUDA_VISIBLE_DEVICES=0 python3 demo_scenegen.py --image_path test_results/case7_quant/panorama.png --classes outdoor --output_path test_results/case7_quant --fp8_gemm --fp8_attention
+# 使用cache 加速推理
+CUDA_VISIBLE_DEVICES=0 python3 demo_scenegen.py --image_path test_results/case7_cache/panorama.png --classes outdoor --output_path test_results/case7_cache --cache
 # And then you get your WORLD SCENE!!
 ```
 

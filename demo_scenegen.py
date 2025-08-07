@@ -20,15 +20,16 @@ import argparse
 # hunyuan3d scene generation
 from hy3dworld import LayerDecomposition
 from hy3dworld import WorldComposer, process_file
-
+from hy3dworld.AngelSlim.gemm_quantization_processor import FluxFp8GeMMProcessor
+from hy3dworld.AngelSlim.attention_quantization_processor import FluxFp8AttnProcessor2_0
 
 class HYworldDemo:
-    def __init__(self, seed=42):
-
+    def __init__(self, args, seed=42):
+        self.args = args
         target_size = 3840
         kernel_scale = max(1, int(target_size / 1920))
 
-        self.LayerDecomposer = LayerDecomposition()
+        self.LayerDecomposer = LayerDecomposition(args)
 
         self.hy3d_world = WorldComposer(
             device=torch.device(
@@ -39,6 +40,13 @@ class HYworldDemo:
             kernel_scale=kernel_scale,
         )
 
+        if self.args.fp8_attention:
+            self.LayerDecomposer.inpaint_fg_model.transformer.set_attn_processor(FluxFp8AttnProcessor2_0())
+            self.LayerDecomposer.inpaint_sky_model.transformer.set_attn_processor(FluxFp8AttnProcessor2_0())
+        if self.args.fp8_gemm:
+            FluxFp8GeMMProcessor(self.LayerDecomposer.inpaint_fg_model.transformer)
+            FluxFp8GeMMProcessor(self.LayerDecomposer.inpaint_sky_model.transformer)
+            
     def run(self, image_path, labels_fg1, labels_fg2, classes="outdoor", output_dir='output_hyworld', export_drc=False):
         # foreground layer information
         fg1_infos = [
@@ -95,8 +103,14 @@ if __name__ == "__main__":
                         help="Labels for foreground objects in layer 1")
     parser.add_argument("--labels_fg2", nargs='+', default=[],
                         help="Labels for foreground objects in layer 2")
+    parser.add_argument("--fp8_attention", action='store_true',
+                        default=False, help="Apply Attention FP8 for acceleration and memory saving")
+    parser.add_argument("--fp8_gemm", action='store_true',
+                        default=False, help="Apply Attention FP8 for acceleration and memory saving")
+    parser.add_argument("--cache", action='store_true',
+                        default=False, help="Apply DeepCache for acceleration")
     parser.add_argument("--classes", type=str, default="outdoor",
-                        help="Classes for scene generation")
+                        help="Classes for sence generation")
     parser.add_argument("--seed", type=int, default=42,
                         help="Random seed for reproducibility")
     parser.add_argument("--output_path", type=str, default="results",
@@ -109,7 +123,7 @@ if __name__ == "__main__":
     os.makedirs(args.output_path, exist_ok=True)
     print(f"Output will be saved to: {args.output_path}")
 
-    demo_HYworld = HYworldDemo(seed=args.seed)
+    demo_HYworld = HYworldDemo(args, seed=args.seed)
     demo_HYworld.run(
         image_path=args.image_path,
         labels_fg1=args.labels_fg1,

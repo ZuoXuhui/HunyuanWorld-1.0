@@ -878,6 +878,7 @@ class FluxBasePipeline(DiffusionPipeline):
         max_sequence_length: int = 512,
         blend_extend: int = 6,
         is_inpainting: bool = False,
+        helper: Optional[Callable] = None,
         **kwargs,
     ):
         """Shared implementation between generation and inpainting pipelines."""
@@ -1142,7 +1143,9 @@ class FluxBasePipeline(DiffusionPipeline):
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
-
+                
+                if helper != None:
+                    helper.cur_timestep = i
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 

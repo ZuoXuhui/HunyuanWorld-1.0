@@ -9,7 +9,7 @@ from PIL import Image
 
 import numpy as np
 from ..utils import sr_utils, seg_utils, inpaint_utils
-
+from hy3dworld.AngelSlim.cache_helper import DeepCacheHelper
 
 class ImageProcessingPipeline:
     """Base class for image processing pipelines with common functionality"""
@@ -76,7 +76,17 @@ class ImageProcessingPipeline:
         
         if labels:
             negative_prompt += ", " + ", ".join(labels)
-            
+
+        helper = None
+        if self.params["cache"]:
+            # Init deepcache helper
+            helper = DeepCacheHelper(pipe_model= inpaint_model.transformer,
+                                    no_cache_steps = [0,1,2,3,4] + list(range(5, 48, 3)) + [ 48, 49],
+                                    no_cache_block_id =  {"single":[38]}
+                                    )
+            helper.start_timestep = 0
+            #打开 CacheHelper
+            helper.enable()
         result = inpaint_model(
             prompt=prompt,
             negative_prompt=negative_prompt,
@@ -90,6 +100,7 @@ class ImageProcessingPipeline:
             num_inference_steps=50,
             max_sequence_length=512,
             generator=torch.Generator("cpu").manual_seed(self.seed),
+            helper=helper,
         ).images[0]
         
         # Clear memory after inpainting
@@ -303,6 +314,16 @@ class SkyPipeline(ImageProcessingPipeline):
                              "noise, mosaic, artifacts, low-contrast, low-quality, blurry, tree, "
                              "grass, plant, ground, land, mountain, building, lake, river, sea, ocean")
             
+            helper = None
+            if self.params["cache"]:
+                # Init deepcache helper
+                helper = DeepCacheHelper(pipe_model= inpaint_model.transformer,
+                                        no_cache_steps = [0,1,2,3,4] + list(range(5, 48, 3)) + [ 48, 49],
+                                        no_cache_block_id =  {"single":[38]}
+                                        )
+                helper.start_timestep = 0
+                #打开 CacheHelper
+                helper.enable()
             result = inpaint_model(
                 prompt=prompt,
                 negative_prompt=negative_prompt,
@@ -316,6 +337,7 @@ class SkyPipeline(ImageProcessingPipeline):
                 num_inference_steps=50,
                 max_sequence_length=512,
                 generator=torch.Generator("cpu").manual_seed(self.seed),
+                helper=helper,
             ).images[0]
             result.save(f'{base_dir}/sky_image.png')
             

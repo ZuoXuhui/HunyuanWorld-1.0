@@ -43,13 +43,16 @@ def build_inpaint_model(model_path, lora_path, subfolder, device=0):
     """
     # Initialize pipeline with bfloat16 precision for memory efficiency
     pipe = FluxFillPipeline.from_pretrained(
-        model_path, torch_dtype=torch.bfloat16).to(f"cuda:{device}")
+        model_path, torch_dtype=torch.bfloat16)
     pipe.load_lora_weights(
         lora_path,
         subfolder=subfolder,
         weight_name="lora.safetensors",  # default weight name
         torch_dtype=torch.bfloat16
     )
+    pipe.fuse_lora()
+    pipe.unload_lora_weights()
+    # save some VRAM by offloading the model to CPU
     pipe.enable_model_cpu_offload()  # save some VRAM by offloading the model to CPU
     pipe.device_id = device
     return pipe

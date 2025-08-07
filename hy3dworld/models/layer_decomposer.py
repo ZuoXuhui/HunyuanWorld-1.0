@@ -24,8 +24,9 @@ class LayerDecomposition():
         cfg_scale (float): Configuration scale for the model.
         prompt_config (dict): Configuration for prompts used in the model.
     """
-    def __init__(self):
+    def __init__(self,args):
         r"""Initialize the LayerDecomposition class with model paths and parameters."""
+        self.args = args
         self.seed = 25
         self.strength = 1.0
         self.threshold = 20000
@@ -119,7 +120,8 @@ class LayerDecomposition():
             'strength': self.strength,
             'dilation_size': self.dilation_size,
             'cfg_scale': self.cfg_scale,
-            'prompt_config': self.prompt_config
+            'prompt_config': self.prompt_config,
+            'cache': self.args.cache
         }
 
         # Layer-specific processing pipelines

@@ -26,11 +26,14 @@ from hy3dworld import Text2PanoramaPipelines
 # huanyuan3d image to panorama
 from hy3dworld import Image2PanoramaPipelines
 from hy3dworld import Perspective
-
+from hy3dworld.AngelSlim.gemm_quantization_processor import FluxFp8GeMMProcessor
+from hy3dworld.AngelSlim.attention_quantization_processor import FluxFp8AttnProcessor2_0
+from hy3dworld.AngelSlim.cache_helper import DeepCacheHelper
 
 class Text2PanoramaDemo:
-    def __init__(self):
+    def __init__(self, args):
         # set default parameters
+        self.args = args
         self.height = 960
         self.width = 1920
 
@@ -51,7 +54,7 @@ class Text2PanoramaDemo:
         self.pipe = Text2PanoramaPipelines.from_pretrained(
             self.model_path,
             torch_dtype=torch.bfloat16
-        ).to("cuda")
+        )
         # and enable lora weights
         self.pipe.load_lora_weights(
             self.lora_path,
@@ -59,12 +62,30 @@ class Text2PanoramaDemo:
             weight_name="lora.safetensors",
             torch_dtype=torch.bfloat16
         )
+        self.pipe.fuse_lora()
+        self.pipe.unload_lora_weights()
         # save some VRAM by offloading the model to CPU
         self.pipe.enable_model_cpu_offload()
         self.pipe.enable_vae_tiling()  # and enable vae tiling to save some VRAM
+        if self.args.fp8_attention:
+            print("Set Fp8 Attention Processor!")
+            self.pipe.transformer.set_attn_processor(FluxFp8AttnProcessor2_0())
+        if self.args.fp8_gemm:
+            print("Set Fp8 GeMM Processor!")
+            FluxFp8GeMMProcessor(self.pipe.transformer)
 
     def run(self, prompt, negative_prompt=None, seed=42, output_path='output_panorama'):
         # get panorama
+        helper = None
+        if self.args.cache:
+            # Init deepcache helper
+            helper = DeepCacheHelper(pipe_model=self.pipe.transformer,
+                                    no_cache_steps=list(range(0, 10)) + list(range(10, 40, 3)) + list(range(40, 50)),
+                                    no_cache_block_id={"single":[38]}
+                                    )
+            helper.start_timestep = 0
+            #打开 CacheHelper
+            helper.enable()
         image = self.pipe(
             prompt,
             height=self.height,
@@ -75,6 +96,7 @@ class Text2PanoramaDemo:
             guidance_scale=self.guidance_scale,
             blend_extend=self.blend_extend,
             true_cfg_scale=self.true_cfg_scale,
+            helper=helper,
         ).images[0]
 
         # create output directory if it does not exist
@@ -89,8 +111,9 @@ class Text2PanoramaDemo:
 
 
 class Image2PanoramaDemo:
-    def __init__(self):
+    def __init__(self,args):
         # set default parameters
+        self.args = args
         self.height, self.width = 960, 1920  # 768, 1536 #
 
         # panorama parameters
@@ -113,7 +136,7 @@ class Image2PanoramaDemo:
         self.pipe = Image2PanoramaPipelines.from_pretrained(
             self.model_path,
             torch_dtype=torch.bfloat16
-        ).to("cuda")
+        )
         # and enable lora weights
         self.pipe.load_lora_weights(
             self.lora_path,
@@ -121,6 +144,8 @@ class Image2PanoramaDemo:
             weight_name="lora.safetensors",
             torch_dtype=torch.bfloat16
         )
+        self.pipe.fuse_lora()
+        self.pipe.unload_lora_weights()
         # save some VRAM by offloading the model to CPU
         self.pipe.enable_model_cpu_offload()
         self.pipe.enable_vae_tiling()  # and enable vae tiling to save some VRAM
@@ -132,6 +157,11 @@ class Image2PanoramaDemo:
         )
         self.general_positive_prompt = "high-quality,  high-resolution, sharp, clear, 8k"
 
+        if self.args.fp8_attention:
+            self.pipe.transformer.set_attn_processor(FluxFp8AttnProcessor2_0())
+        if self.args.fp8_gemm:
+            FluxFp8GeMMProcessor(self.pipe.transformer)
+    
     def run(self, prompt, negative_prompt, image_path, seed=42, output_path='output_panorama'):
         # preprocess prompt
         prompt = prompt + ", " + self.general_positive_prompt
@@ -169,7 +199,18 @@ class Image2PanoramaDemo:
         mask = Image.fromarray(mask[:, :, 0])
         img = cv2.cvtColor(img.astype(np.uint8), cv2.COLOR_BGR2RGB)
         img = Image.fromarray(img)
-
+        
+        helper = None
+        if self.args.cache:
+            # Init deepcache helper
+            helper = DeepCacheHelper(self.pipe.transformer,
+                                    no_cache_steps=list(range(0, 10)) + list(range(10, 40, 3)) + list(range(40, 50)),
+                                    no_cache_block_id={"single":[38]}
+                                    )
+            helper.start_timestep = 0
+            #打开 CacheHelper
+            helper.enable()
+        
         image = self.pipe(
             prompt=prompt,
             image=img,
@@ -183,6 +224,7 @@ class Image2PanoramaDemo:
             blend_extend=self.blend_extend,
             shifting_extend=self.shifting_extend,
             true_cfg_scale=self.true_cfg_scale,
+            helper=helper,
         ).images[0]
 
         image.save(os.path.join(output_path, 'panorama.png'))
@@ -198,6 +240,12 @@ if __name__ == "__main__":
                         default="", help="Negative prompt for image generation")
     parser.add_argument("--image_path", type=str,
                         default=None, help="Path to the input image")
+    parser.add_argument("--fp8_attention", action='store_true',
+                        default=False, help="Apply Attention FP8 for acceleration and memory saving")
+    parser.add_argument("--fp8_gemm", action='store_true',
+                        default=False, help="Apply Attention FP8 for acceleration and memory saving")
+    parser.add_argument("--cache", action='store_true',
+                        default=False, help="Apply DeepCache for acceleration")
     parser.add_argument("--seed", type=int, default=42,
                         help="Random seed for reproducibility")
     parser.add_argument("--output_path", type=str, default="results",
@@ -210,7 +258,7 @@ if __name__ == "__main__":
 
     if args.image_path is None:
         print("No image path provided, using text-to-panorama generation.")
-        demo_T2P = Text2PanoramaDemo()
+        demo_T2P = Text2PanoramaDemo(args)
         panorama_image = demo_T2P.run(
             args.prompt, args.negative_prompt, args.seed, args.output_path)
     else:
@@ -218,6 +266,9 @@ if __name__ == "__main__":
             raise FileNotFoundError(
                 f"Image path {args.image_path} does not exist.")
         print(f"Using image at {args.image_path} for panorama generation.")
-        demo_I2P = Image2PanoramaDemo()
+        demo_I2P = Image2PanoramaDemo(args)
         panorama_image = demo_I2P.run(
             args.prompt, args.negative_prompt, args.image_path, args.seed, args.output_path)
+    
+    max_allocated = torch.cuda.max_memory_allocated() / (1024 ** 3)
+    print(f"最大显存占用: {max_allocated:.2f} GB")
